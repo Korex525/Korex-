@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevPulse Dashboard</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: #f4f6f8; margin: 0; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    h1, h2 { margin-top: 0; color: #1e293b; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 14px; }
+    input, textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+    button { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #1d4ed8; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .article-item { border-bottom: 1px solid #e2e8f0; padding: 12px 0; }
+    .article-item:last-child { border-bottom: none; }
+    .article-title { font-size: 18px; color: #0f172a; text-decoration: none; font-weight: 600; }
+    .article-title:hover { color: #2563eb; }
+    .status { padding: 10px; border-radius: 6px; display: none; margin-bottom: 15px; }
+    .status.success { background: #dcfce7; color: #166534; display: block; }
+    .status.error { background: #fee2e2; color: #991b1b; display: block; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 DevPulse Dashboard</h1>
+    
+    <div id="statusBox" class="status"></div>
+
+    <!-- Auth Section -->
+    <div class="card" id="authSection">
+      <h2>Login (JWT Authentication)</h2>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="usernameInput" placeholder="Enter username" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="passwordInput" placeholder="Enter password" />
+      </div>
+      <button onclick="login()">Log In</button>
+    </div>
+
+    <!-- User Logged In Bar -->
+    <div class="card hidden" id="userInfo">
+      <p>Logged in as authenticated user. <button class="btn-danger" onclick="logout()">Log Out</button></p>
+    </div>
+
+    <!-- Create Article Form -->
+    <div class="card hidden" id="createArticleSection">
+      <h2>Create New Article</h2>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="articleTitle" placeholder="Article Title" />
+      </div>
+      <div class="form-group">
+        <label>Source URL</label>
+        <input type="url" id="articleUrl" placeholder="https://..." />
+      </div>
+      <div class="form-group">
+        <label>Content</label>
+        <textarea id="articleContent" rows="3" placeholder="Article summary or body"></textarea>
+      </div>
+      <button onclick="createArticle()">Publish Article</button>
+    </div>
+
+    <!-- Articles Feed -->
+    <div class="card">
+      <h2>Recent Articles</h2>
+      <div id="articlesList">Loading articles...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000/api/';
+
+    function showStatus(message, isError = false) {
+      const box = document.getElementById('statusBox');
+      box.textContent = message;
+      box.className = `status ${isError ? 'error' : 'success'}`;
+      setTimeout(() => { box.className = 'status hidden'; }, 4000);
+    }
+
+    function checkAuthState() {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        document.getElementById('authSection').classList.add('hidden');
+        document.getElementById('userInfo').classList.remove('hidden');
+        document.getElementById('createArticleSection').classList.remove('hidden');
+      } else {
+        document.getElementById('authSection').classList.remove('hidden');
+        document.getElementById('userInfo').classList.add('hidden');
+        document.getElementById('createArticleSection').classList.add('hidden');
+      }
+    }
+
+    // 1. JWT Login
+    async function login() {
+      const username = document.getElementById('usernameInput').value;
+      const password = document.getElementById('passwordInput').value;
+
+      try {
+        const res = await fetch(`${API_BASE}token/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (!res.ok) throw new Error('Invalid username or password');
+
+        const data = await res.json();
+        localStorage.setItem('access_token', data.access);
+        localStorage.setItem('refresh_token', data.refresh);
+
+        showStatus('Logged in successfully!');
+        checkAuthState();
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    }
+
+    // 2. Logout
+    function logout() {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      checkAuthState();
+      showStatus('Logged out.');
+    }
+
+    // 3. Fetch Articles (GET)
+    async function fetchArticles() {
+      try {
+        const res = await fetch(`${API_BASE}articles/`);
+        const data = await res.json();
+        const container = document.getElementById('articlesList');
+
+        const articles = Array.isArray(data) ? data : data.results || [];
+        if (articles.length === 0) {
+          container.innerHTML = '<p>No articles found.</p>';
+          return;
+        }
+
+        container.innerHTML = articles.map(art => `
+          <div class="article-item">
+            <a class="article-title" href="${art.source_url}" target="_blank">${art.title}</a>
+            <p style="margin: 5px 0; color: #475569;">${art.content || 'No content available'}</p>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('articlesList').innerHTML = '<p style="color: red;">Error loading articles.</p>';
+      }
+    }
+
+    // 4. Create Article
+    async function createArticle() {
+      const title = document.getElementById('articleTitle').value;
+      const source_url = document.getElementById('articleUrl').value;
+      const content = document.getElementById('articleContent').value;
+      const token = localStorage.getItem('access_token');
+
+      try {
+        const res = await fetch(`${API_BASE}articles/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ title, source_url, content })
+        });
+
+        if (!res.ok) throw new Error('Failed to create article');
+
+        showStatus('Article published successfully!');
+        document.getElementById('articleTitle').value = '';
+        document.getElementById('articleUrl').value = '';
+        document.getElementById('articleContent').value = '';
+        fetchArticles();
+      } catch (err) {
+        showStatus(err.message, true);
+      }
+    }
+
+    // Initialize
+    checkAuthState();
+    fetchArticles();
+  </script>
+</body>
+</html>
